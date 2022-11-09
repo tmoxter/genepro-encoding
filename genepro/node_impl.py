@@ -1,3 +1,4 @@
+from copy import deepcopy
 import numpy as np
 from genepro.node import Node
 
@@ -10,10 +11,13 @@ class Plus(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'between')
+  
+  def eval_indiv(self, a, b):
+    return a + b
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return c_outs[0] + c_outs[1]
+    return self.eval_indiv(c_outs[0], c_outs[1])
 
 
 class Minus(Node):
@@ -24,10 +28,13 @@ class Minus(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'between')
+  
+  def eval_indiv(self, a, b):
+    return a - b
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return c_outs[0] - c_outs[1]
+    return self.eval_indiv( c_outs[0], c_outs[1])
 
 
 class Times(Node):
@@ -38,10 +45,13 @@ class Times(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'between')
+  
+  def eval_indiv(self, a, b):
+    return np.multiply(a, b)
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return np.multiply(c_outs[0], c_outs[1])
+    return self.eval_indiv(c_outs[0], c_outs[1])
 
 
 class Div(Node):
@@ -53,14 +63,16 @@ class Div(Node):
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'between')
 
-  def get_output(self, X):
-    c_outs = self._get_child_outputs(X)
+  def eval_indiv(self, a, b):
     # implements a protection to avoid dividing by 0
-    sign_b = np.sign(c_outs[1])
+    sign_b = np.sign(b)
     sign_b = np.where(sign_b == 0, 1, sign_b) 
-    protected_div = sign_b * c_outs[0] / (1e-9 + np.abs(c_outs[1]))
+    protected_div = sign_b * a / (1e-9 + np.abs(b))
     return protected_div
 
+  def get_output(self, X):
+    c_outs = self._get_child_outputs(X)
+    return self.eval_indiv(c_outs[0], c_outs[1])
 
 class Square(Node):
   def __init__(self):
@@ -70,11 +82,13 @@ class Square(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'after')
+  
+  def eval_indiv(self, x):
+    return np.square(x)
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return np.square(c_outs[0])
-
+    return self.eval_indiv(c_outs[0])
 
 class Cube(Node):
   def __init__(self):
@@ -84,11 +98,13 @@ class Cube(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'after')
+  
+  def eval_indiv(self, x):
+    return np.multiply(np.square(x), x)
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return np.multiply(np.square(c_outs[0]), c_outs[0])
-
+    return self.eval_indiv(c_outs[0])
 
 class Sqrt(Node):
   def __init__(self):
@@ -99,12 +115,14 @@ class Sqrt(Node):
   def _get_args_repr(self, args):
     # let's report also protection
     return "sqrt(abs("+args[0]+"))"
+  
+  def eval_indiv(self, x):
+    # implements a protection to avoid arg <= 0
+    return np.sqrt(np.abs(x))
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    # implements a protection to avoid arg <= 0
-    return np.sqrt(np.abs(c_outs[0]))
-
+    return self.eval_indiv(c_outs[0])
 
 class Log(Node):
   def __init__(self):
@@ -115,13 +133,15 @@ class Log(Node):
   def _get_args_repr(self, args):
     # let's report also protection (to some level of detail)
     return "log(abs("+args[0]+"))"
+  
+  def eval_indiv(self, x):
+    # implements a protection to avoid arg <= 0
+    protected_log = np.log(np.abs(x) + 1e-9)
+    return protected_log
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    # implements a protection to avoid arg <= 0
-    protected_log = np.log(np.abs(c_outs[0]) + 1e-9)
-    return protected_log
-
+    return self.eval_indiv(c_outs[0])
 
 class Exp(Node):
   def __init__(self):
@@ -131,11 +151,13 @@ class Exp(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, x):
+    return np.clip(np.exp(x), -1e16, 1e16)
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return np.exp(c_outs[0])
-
+    return self.eval_indiv(c_outs[0])
 
 class Sin(Node):
   def __init__(self):
@@ -145,10 +167,13 @@ class Sin(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, x):
+    return np.sin(x)
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return np.sin(c_outs[0])
+    return self.eval_indiv(c_outs[0])
 
 
 class Cos(Node):
@@ -159,10 +184,30 @@ class Cos(Node):
 
   def _get_args_repr(self, args):
     return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, x):
+    return np.cos(x)
 
   def get_output(self, X):
     c_outs = self._get_child_outputs(X)
-    return np.cos(c_outs[0])
+    return self.eval_indiv(c_outs[0])
+  
+class Lin(Node):
+  def __init__(self, m = 1):
+    super(Lin, self).__init__()
+    self.arity = 1
+    self.symb = str(m)+"*"
+    self.m = m
+
+  def _get_args_repr(self, args):
+    return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, x):
+    return self.m*x
+
+  def get_output(self, X):
+    c_outs = self._get_child_outputs(X)
+    return self.eval_indiv(c_outs[0])
 
 
 class Max(Node):
@@ -208,14 +253,18 @@ class IfThenElse(Node):
 
 
 class Feature(Node):
-  def __init__(self,id):
+  def __init__(self, x, id):
     super(Feature,self).__init__()
     self.arity = 0
     self.id = id
     self.symb = 'x_'+str(id)
+    self.x = x
 
   def _get_args_repr(self, args):
     return self.symb
+  
+  def eval_indiv(self, *_):
+    return self.x[:,self.id]
 
   def get_output(self, X):
     return X[:,self.id]
@@ -242,8 +291,69 @@ class Constant(Node):
     # make sure it is initialized
     self.get_value()
     return self.symb
+  
+  def eval_indiv(self, x, _):
+    v = self.get_value()
+    return np.repeat(v, len(x))
 
   def get_output(self, X : np.ndarray) -> np.ndarray:
     # make sure it is initialized
     v = self.get_value()
     return np.repeat(v, len(X))
+
+class Composition(Node):
+  def __init__(self, unary, binary, scale = (1,1)):
+    super(Composition, self).__init__()
+    self.unary, self.binary = deepcopy(unary), deepcopy(binary)
+    self.scale = scale
+    self.arity = 2
+    self.symb = self.unary.symb + self.binary.symb
+
+  def _get_args_repr(self, args):
+    return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, a, b):
+    binRes = self.binary.eval_indiv(self.scale[0]*a,
+                                    self.scale[1]*b)
+    return self.unary.eval_indiv(binRes)     
+
+  def get_output(self, X):
+    if self.binary.arity != 0:
+      c_outs = self._get_child_outputs(X)
+    else:
+      c_outs = (X, 0)
+    return self.eval_indiv(c_outs[0], c_outs[1])
+
+class Identity(Node):
+  def __init__(self):
+    super(Identity, self).__init__()
+    self.arity = 1
+    self.symb = ''
+  
+  def _get_args_repr(self, args):
+    return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, x):
+    return x   
+
+  def get_output(self, X):
+    c_outs = self._get_child_outputs(X)
+    return self.eval_indiv(c_outs[0])
+
+class Xor(Node):
+  def __init__(self, idx):
+    super().__init__()
+    assert idx in [0,1], "Evaluate only first child (0) or second child (1)"
+    self.idx = idx
+    self.arity = 2
+    self.symb = 'xor'+str(idx)
+  
+  def _get_args_repr(self, args):
+    return self._get_typical_repr(args,'before')
+  
+  def eval_indiv(self, *x):
+    return x[self.idx]  
+
+  def get_output(self, X):
+    c_outs = self._get_child_outputs(X)
+    return self.eval_indiv(c_outs[0], c_outs[1])
