@@ -1,9 +1,7 @@
 import numpy as np
 from copy import deepcopy
-from typing import Tuple
 from genepro.node import Node
 from genepro.node_impl import Composition, Identity, Xor
-from genepro.node_impl import Constant
 
 class Encoder:
     """Encode and decode in and from real-valued representation of syntax trees.
