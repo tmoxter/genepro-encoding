@@ -150,7 +150,7 @@ class RandomWalk(Encoder):
             images.append(images[-1])
         imageio.mimsave('temp/movie.gif', images)
 
-class SimulatedAnnealingSingle(Encoder):
+class SimulatedAnnealing(Encoder):
     """Simulated annealing procedure for a single solution candidate. Local changes are made,
     of which 'good' moves are always accepted, while 'bad' moves have a chance of being accepted
     depending both on the current temperature and the loss of fitness during the move.
@@ -185,7 +185,7 @@ class SimulatedAnnealingSingle(Encoder):
 
     def search(self, step_size : float, restarts : int, kmax : int = 50, 
                 temp0 : float = None, temp_terminate : float = 0.5,
-                fitness : callable = None) -> Tuple:
+                fitness : callable = None, t0 = None) -> Tuple:
 
         """Perform search in the embedded space according to the simulated annealing procedure.
         If no fitness function is provided, MSE is used.
@@ -211,13 +211,15 @@ class SimulatedAnnealingSingle(Encoder):
             fitness = lambda tree: np.mean(
                 np.power(tree(self.train_x)-self.train_y, 2)
                 )
+        
+        if not t0:
+            t0 = treegen.sample_tree(self.unaryNodes, self.binaryNodes,
+                                                    self.leafNodes, 2)
 
         # --- find initial temperature ---
         # -> Should be problem-specific and is therefore kept for all runs
         #    in reality it might be reasonable to recalculate temp0 for each new t0 in every run
         if not temp0:
-            t0 = treegen.sample_tree(self.unaryNodes, self.binaryNodes,
-                                                    self.leafNodes, 2)
             track = []
             best_of_var_f = fitness(t0)
             best_of_var_t = t0
@@ -335,14 +337,3 @@ class SimulatedAnnealingSingle(Encoder):
         for _ in range(int(0.5*len(images))):
             images.append(images[-1])
         imageio.mimsave('temp/movie.gif', images)
-
-class SimulatedAnnealingPopulation(Encoder):
-
-    def __init__(self, unaryNodes: list, binaryNodes: list, leafNodes: list, 
-        step_size : float, restarts : int, kmax : int = 50, 
-        temp0 : float = None, temp_terminate : float = 0.5,
-        fitness : callable = None, max_evals : int=None, max_gens : int=100,
-        max_time : int=None, verbose : bool=False, log = None) -> None:
-
-        super().__init__(unaryNodes, binaryNodes, leafNodes)
-        
