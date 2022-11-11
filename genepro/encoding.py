@@ -76,7 +76,7 @@ class Encoder:
         
         Parameters
         -----
-        ax :np.ndarray: left child domain, bx :np.ndarray: right child domain
+        ax :np.ndarray: left child image, bx :np.ndarray: right child image
         
         Returns
         -----
@@ -116,6 +116,7 @@ class Encoder:
     def encode(self, tree : Node, x : np.ndarray, has_domains : bool = False)\
                                                                 -> np.ndarray:                  
         """Generate encoding of tree.
+
         Parameters
         -----
         tree :Node: root of tree to be encoded,
@@ -134,8 +135,12 @@ class Encoder:
         return np.array(code)
     
     def _backward_mapping(self, vector : np.ndarray, forceLeaf = False) -> Node:
-        """Reverse mapping from embedding to Nodes. Called for individual
-        Node rather than tree, trees are reconnected afterwards.
+        """Reverse mapping from embedding to nodes. Called for individual
+        node, trees are reconnected afterwards.
+
+        Parameters
+        -----
+        vector :np.ndarray: encoded node, forceLeaf :bool: yes for terminals
         
         Returns
         -----
@@ -155,7 +160,7 @@ class Encoder:
     def _connect_tree_recursive(self, idx : int, sequence : list, arityCount : list):
         """Reconnect nodes in a vector of nodes that represents a tree.
 
-        Paras
+        Parameters
         -----
         idx : used for recursive call,
         sequence :list: list of nodes to connect,
@@ -176,7 +181,7 @@ class Encoder:
     def decode(self, code : np.ndarray) -> Node:                                                       
         """Generate node representation of encoded tree.
 
-        Paras
+        Parameters
         -----
         code :np.ndarray: the encoded tree
 

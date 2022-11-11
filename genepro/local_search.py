@@ -335,3 +335,14 @@ class SimulatedAnnealingSingle(Encoder):
         for _ in range(int(0.5*len(images))):
             images.append(images[-1])
         imageio.mimsave('temp/movie.gif', images)
+
+class SimulatedAnnealingPopulation(Encoder):
+
+    def __init__(self, unaryNodes: list, binaryNodes: list, leafNodes: list, 
+        step_size : float, restarts : int, kmax : int = 50, 
+        temp0 : float = None, temp_terminate : float = 0.5,
+        fitness : callable = None, max_evals : int=None, max_gens : int=100,
+        max_time : int=None, verbose : bool=False, log = None) -> None:
+
+        super().__init__(unaryNodes, binaryNodes, leafNodes)
+        

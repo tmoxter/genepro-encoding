@@ -7,10 +7,19 @@ from copy import deepcopy
 def sample_tree(unary_nodes : list, binary_nodes : list, leaf_nodes : list,
                         max_depth : int = 3, curr_depth : int = 0) -> Node:
     """
-    Generate randomly sampled tree of given depth based on new composition
-    structure.
-    ---
-    Returns :Node: roor node of generated tree"""
+    Generate randomly sampled full tree of given depth based on the new 
+    composition structure.
+    
+    Parameters
+    -----
+    unaryNodes :list: unary atomic functions available,
+    binaryNodes :list: binary atomic functions available,
+    leafNodes :list: leaf nodes available, max_depth :int: final depth of
+    tree, curr_depth :int: used for recursive call only
+    
+    Returns
+    -----
+    Returns :Node: root node of newly sampled tree"""
 
     if np.random.randn() > 0 or curr_depth == max_depth:
         unaryNode = Identity()
