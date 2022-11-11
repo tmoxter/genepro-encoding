@@ -187,16 +187,16 @@ class SimulatedAnnealingSingle(Encoder):
                 temp0 : float = None, temp_terminate : float = 0.5,
                 fitness : callable = None) -> Tuple:
 
-        """Perform search in the embedded space according to simulated annealing procedure.
-        If not fitness function is provided, MSE is used.
+        """Perform search in the embedded space according to the simulated annealing procedure.
+        If no fitness function is provided, MSE is used.
         
         Parameters
         -----
         step_size :float: upper limit for the r2 distance moved in ecoded space,
         restarts :int: number of restarts, kmax :int: number of steps performed
         at every temprerature, temp0 :float: initial temperature, if not provided it is
-        temp0 = (-U)∕ ln(Racc), where U is the median fitness increase during uphill moves in
-        a random walk with large step size to explore the landscape Racc is the desired initial
+        set to temp0 = (-U)∕ ln(Racc), where U is the median fitness increase during uphill moves in
+        a random walk with large step size to explore the landscape, and Racc is the desired initial
         acceptance rate set here to 0.9 [Rozenberg et al., 'Handbook of Natural Computing',
         DOI 10.1007/978-3-540-92910-9, pp.1684], temp_terminate :float: final temperature at termination,
         fitness :callable: if provided, needs to have call singniture fitness(tree : Node).
@@ -213,6 +213,8 @@ class SimulatedAnnealingSingle(Encoder):
                 )
 
         # --- find initial temperature ---
+        # -> Should be problem-specific and is therefore kept for all runs
+        #    in reality it might be reasonable to recalculate temp0 for each new t0 in every run
         if not temp0:
             t0 = treegen.sample_tree(self.unaryNodes, self.binaryNodes,
                                                     self.leafNodes, 2)

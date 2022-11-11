@@ -55,8 +55,8 @@ class Encoder:
                 tree.domains.append(child_image)
     
     def _softmax(self, x : np.ndarray) -> np.ndarray:
-        """Apply softmax numerically a bit more stabelized because
-        large values are subtracted before each exp call.
+        """Apply softmax numerically a bit more stabilized as
+        large values are subtracted before each exponential call.
         
         Parameters
         -----
