@@ -60,7 +60,7 @@ class RandomWalk(Encoder):
         """
 
         if not fitness:
-            fitness = lambda tree: np.mean(
+            fitness = lambda tree: -np.mean(
                 np.power(tree(self.train_x)-self.train_y, 2)
                 )
         # --- initialize ---
@@ -104,7 +104,7 @@ class RandomWalk(Encoder):
                     plt.close()
                 # --- ---
 
-                if var_f < best_of_var_f:
+                if var_f > best_of_var_f:
                     best_of_var_t = var_t
                     best_of_var_f = var_f
                     j = 0
@@ -112,10 +112,10 @@ class RandomWalk(Encoder):
             # --- ---
 
             track.append((best_of_var_f, best_of_var_t))
-            if best_of_var_f < best_of_runs_f:
+            if best_of_var_f > best_of_runs_f:
                 best_of_runs_t = best_of_var_t
                 best_of_runs_f = best_of_var_f
-                if best_of_runs_f < 1e-6:
+                if best_of_runs_f > 1e-6:
                     print("Terminating sucessfully...")
                     break
             t0 = treegen.sample_tree(self.unaryNodes, self.binaryNodes,
@@ -166,7 +166,7 @@ class SimulatedAnnealing(Encoder):
         super().__init__(unaryNodes, binaryNodes, leafNodes)
         self.train_x = train_x
         self.train_y = train_y
-        self.plot = False
+        self.plot, self.sa_verbose = False, False
     
     def local_variation(self, tree : Node, step_size : float) -> Node:
         """Get new tree that is a local (in ecoding) variation of original tree.
@@ -181,11 +181,11 @@ class SimulatedAnnealing(Encoder):
         tree = self.decode(variation)
         
         return tree
-    
 
     def search(self, step_size : float, restarts : int, kmax : int = 50, 
-                temp0 : float = None, temp_terminate : float = 0.5,
-                fitness : callable = None, t0 = None) -> Tuple:
+                temp0 : float = None, temp_terminate : float = None,
+                fitness : callable = None, t0 : Node = None,
+                max_temp_steps : int = 25) -> Tuple:
 
         """Perform search in the embedded space according to the simulated annealing procedure.
         If no fitness function is provided, MSE is used.
@@ -199,7 +199,8 @@ class SimulatedAnnealing(Encoder):
         a random walk with large step size to explore the landscape, and Racc is the desired initial
         acceptance rate set here to 0.9 [Rozenberg et al., 'Handbook of Natural Computing',
         DOI 10.1007/978-3-540-92910-9, pp.1684], temp_terminate :float: final temperature at termination,
-        fitness :callable: if provided, needs to have call singniture fitness(tree : Node).
+        fitness :callable: if provided, needs to have call singniture fitness(tree : Node),
+        t0 :Node: inital tree, max_temp_steps :int: maximum number of temperature iterations.
         
         Returns
         -----
@@ -208,7 +209,7 @@ class SimulatedAnnealing(Encoder):
         """
         
         if not fitness:
-            fitness = lambda tree: np.mean(
+            fitness = lambda tree: -np.mean(
                 np.power(tree(self.train_x)-self.train_y, 2)
                 )
         
@@ -219,22 +220,31 @@ class SimulatedAnnealing(Encoder):
         # --- find initial temperature ---
         # -> Should be problem-specific and is therefore kept for all runs
         #    in reality it might be reasonable to recalculate temp0 for each new t0 in every run
-        if not temp0:
+        if not temp0 or not temp_terminate:
             track = []
             best_of_var_f = fitness(t0)
             best_of_var_t = t0
             # --- --- random walk loop --- ---
-            for _ in range(100):
+            for _ in range(50):
                 var_t = self.local_variation(best_of_var_t,
                         step_size=np.random.random()*step_size)
                 var_f = fitness(var_t)
-                if var_f > best_of_var_f:
+                if var_f < best_of_var_f:
                     track.append(var_f - best_of_var_f)
                 best_of_var_t = var_t
                 best_of_var_f = var_f
             u = np.median(track)
-            temp0 = -u / np.log(0.9)
+            if not temp0:
+                temp0 = u / np.log(0.95)
+            if not temp_terminate:
+                temp_terminate = u / np.log(0.35)
+        
+        alpha = np.log(temp_terminate/temp0) / max_temp_steps + 1
+        if self.sa_verbose:
             print("Initial T: {:.4f}".format(temp0))
+            print("Final T: {:.4f}".format(temp_terminate))
+            print("Exponential T decrease: {:.5f}".format(alpha))
+
         # --- 
 
         best_of_runs_f = fitness(t0)
@@ -248,7 +258,8 @@ class SimulatedAnnealing(Encoder):
                                      -  np.min(self.train_y))/ 2 * 2.5
         # --- main loop ---
         for i in range(restarts):
-            print("(Re)start: %s..." %i)
+            if self.sa_verbose:
+                print("(Re)start: %s..." %i)
             sample = []
 
             # --- Initialize ---
@@ -260,17 +271,16 @@ class SimulatedAnnealing(Encoder):
             tcnt = 0
             while temp > temp_terminate:
                 tcnt += 1
-                print("New temperature: {:.4f}".format(temp))
-                print("Current best: {:.4f}".format(best_of_var_f))
+                if self.sa_verbose:
+                    print("New temperature: {:.4f}".format(temp))
+                    print("Current best: {:.4f}".format(best_of_var_f))
                 nrep = kmax
-                fdev = []
                 for _ in range(nrep):
                     var_t = self.local_variation(state_t, step_size)
                     var_f = fitness(var_t)
-                    fdev.append(var_f)
                     sample.append(var_t)
 
-                    if var_f < state_f:
+                    if var_f > state_f:
                         state_f = var_f
                         state_t = var_t
                     elif np.random.random() < np.exp(-(state_f - var_f)/temp):
@@ -278,7 +288,7 @@ class SimulatedAnnealing(Encoder):
                         state_t = var_t
                     
                     # --- save best state visited in this run ---
-                    if state_f < best_of_var_f:
+                    if state_f > best_of_var_f:
                         best_of_var_f = state_f
                         best_of_var_t = state_t
                     # ---
@@ -294,16 +304,11 @@ class SimulatedAnnealing(Encoder):
                                         np.round(temp, 5)))
                     fig.savefig("temp/"+str(tcnt)+".png")
                     plt.close()
-                # --- ---
-                if best_of_var_f < 0.005 * (np.max(np.abs(self.train_y))
-                                          - np.min(np.abs(self.train_y))):
-                    print("Terminating sucessfully...")
-                    break
                 # ---- --- temperature lowering schedule, alpha = 0.98 --- ---
-                temp = temp * 0.98 #np.exp(-0.75 * temp / np.std(fdev)) needs testing
+                temp = temp * alpha #np.exp(-0.75 * temp / np.std(fdev)) needs testing
     
             track.append((best_of_var_f, best_of_var_t))
-            if best_of_var_f < best_of_runs_f:
+            if best_of_var_f > best_of_runs_f:
                 best_of_runs_t = best_of_var_t
                 best_of_runs_f = best_of_var_f
 
@@ -312,7 +317,8 @@ class SimulatedAnnealing(Encoder):
         
         if self.plot:
             self._create_gif()
-        print("Done")
+        if self.sa_verbose:
+            print("Done")
         return best_of_runs_f, best_of_runs_t, track
 
     def _plot_functions(self, x, ax, sample, best):
