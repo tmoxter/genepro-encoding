@@ -13,21 +13,20 @@ class Encoder:
     leafNodes :list: leaf nodes available """
 
     def __init__(self, unaryNodes : list, binaryNodes : list,
-                                            leafNodes : list) -> None:
+            leafNodes : list, train_x : np.ndarray, train_y : np.ndarray) -> None:
         # --- save original catogorization ---
         self.leafNodes = leafNodes
         self.binaryNodes, self.unaryNodes = binaryNodes, unaryNodes
+        self.train_x, self.train_y = train_x, train_y
         # --- merge to composition node representation ---
         unaryNodes = unaryNodes + [Identity()]
         binaryNodes = binaryNodes + [Xor(0), Xor(1)] + leafNodes
         nUn, nBin = len(unaryNodes), len(binaryNodes)
-        self.internalNodes = np.zeros((nBin, nUn), dtype=object)
-        for i in range(nBin):
-            for j in range(nUn):
-                self.internalNodes[i, j] = Composition(unaryNodes[j],
-                                                      binaryNodes[i])
+        self.internalNodes = np.array([[Composition(unaryNodes[j],
+                                binaryNodes[i]) for j in range(nUn)]
+                                                for i in range(nBin)])
     
-    def _assign_domains(self, tree : Node, x : np.ndarray) -> None:
+    def _assign_domains(self, tree : Node) -> None:
         """Recursively assign domains to each node (interval arithmetics).
         
         Parameters
@@ -42,12 +41,12 @@ class Encoder:
         #self.x = x
         tree.domains = []
         for child in tree._children:
-            self._assign_domains(child, x)
+            self._assign_domains(child)
         if tree.binary.arity == 0:
             # --- for leaf nodes the domain has to be added twice since they are
-            #     treated as binary nodes ---
-            tree.domains.append(x)
-            tree.domains.append(x)
+            #     treated as binary nodes, the data only used in terms of its shape ---
+            tree.domains.append(self.x[:,0])
+            tree.domains.append(self.x[:,0])
         else:
             for child in tree._children:
                 child_image = child.eval_indiv(child.domains[0],
@@ -81,7 +80,8 @@ class Encoder:
         Returns
         -----
         similarity :float:"""
-        return 1/(np.mean(np.power(ax-bx, 2)) + epsilon)
+        epsilon = 1/max(np.abs(self.train_y))
+        return np.exp(-np.mean(np.power(ax-bx, 2)) * epsilon)
         
     def _forward_mapping(self, node : Node) -> np.ndarray:
         """Generate embedding for a single node.
@@ -127,7 +127,7 @@ class Encoder:
         :np.ndarray: tree representation in encoded space"""
         
         if not has_domains:
-            self._assign_domains(tree, x)
+            self._assign_domains(tree)
         pref_vector = tree.get_subtree()
         code = []
         for node in pref_vector:
