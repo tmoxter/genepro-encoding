@@ -313,8 +313,7 @@ class Composition(Node):
     return self._get_typical_repr(args,'before')
   
   def eval_indiv(self, a, b):
-    binRes = self.binary.eval_indiv(self.scale[0]*a,
-                                    self.scale[1]*b)
+    binRes = self.binary.eval_indiv(a, b)
     return self.unary.eval_indiv(binRes)     
 
   def get_output(self, X):
