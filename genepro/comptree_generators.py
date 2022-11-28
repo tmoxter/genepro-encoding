@@ -42,3 +42,60 @@ def sample_tree(unary_nodes : list, binary_nodes : list, leaf_nodes : list,
                                             max_depth, curr_depth+1)
             n.insert_child(c)
     return n
+
+def sample_tree_slim(unaryNodes : list, binaryNodes : list, leafNodes : list,
+                        max_depth : int = 3, curr_depth : int = 0) -> Node:
+    """
+    Generate randomly sampled full tree of given depth based on the new 
+    composition structure.
+    
+    Parameters
+    -----
+    unaryNodes :list: unary atomic functions available,
+    binaryNodes :list: binary atomic functions available,
+    leafNodes :list: leaf nodes available, max_depth :int: final depth of
+    tree, curr_depth :int: used for recursive call only
+    
+    Returns
+    -----
+    Returns :Node: root node of newly sampled tree"""
+
+    if curr_depth == max_depth:
+        node = deepcopy(randc(leafNodes))
+    else:
+        node = deepcopy(randc(unaryNodes + binaryNodes))
+
+    if curr_depth != max_depth:
+        for _ in range(n.arity):
+            c = sample_tree(unaryNodes, binaryNodes, leafNodes, 
+                                            max_depth, curr_depth+1)
+            node.insert_child(c)
+    return node
+
+
+def sample_tree_vectorized(unaryNodes : list, binaryNodes : list, leafNodes : list,
+                        depth: int, xtrain : np.ndarray):
+
+    unaryNodes = [Composition(unaryNodes[i], [Xor(0), Xor(1)][j])
+                        for i in range(len(unaryNodes)) for j in range(2)]
+    binaryNodes = [Composition(Identity(), bin) for bin in binaryNodes]
+    leafNodes = [Composition(Identity(), lf) for lf in leafNodes]
+    depth = depth+1
+    tree = [None]*(2**depth)
+    # --- fill leaf nodes ---
+    for i in range(2**(depth-1), 2**depth):
+        choice = deepcopy(randc(leafNodes))
+        choice.eval = choice.eval_indiv(xtrain, None)
+        tree[i] = choice
+    # --- fill rest of the tree recursively ---
+    for layer in range(depth-1, 0, -1):
+        for i in range(2**(layer-1), 2**layer):
+            choice = deepcopy(randc(binaryNodes*2 + unaryNodes))
+            choice.eval = choice.eval_indiv(tree[2*i].eval, tree[2*i+1].eval)
+            tree[i] = choice
+    # --- fill in root node ---
+    choice = deepcopy(randc(binaryNodes*2 + unaryNodes))
+    choice.eval = choice.eval_indiv(tree[2].eval, tree[3].eval)
+    tree[1] = choice
+    tree[0] = -1e2
+    return tree
