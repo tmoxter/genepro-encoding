@@ -236,7 +236,7 @@ class SlimEncoder:
         return np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum()
         
     def _compare(self, ax : np.ndarray, bx : np.ndarray,
-                                    epsilon : float = 1.5) -> float:
+                                    epsilon : float = 1) -> float:
         """Metric to determine similarity between atomic functions. The
         epsilon value has a large impact on what makes an adequate step size
         later in traversing the encoded space.
