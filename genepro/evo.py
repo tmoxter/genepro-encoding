@@ -1,6 +1,7 @@
 from typing import Callable
 
 import numpy as np
+import pandas as pd
 from numpy.random import random as randu
 from numpy.random import randint as randi
 from numpy.random import choice as randc
@@ -113,6 +114,7 @@ class Evolution:
     values.pop('self')
     for arg, val in values.items():
       setattr(self, arg, val)
+    self.save_data = []
 
     # fill-in empty kwargs if absent in crossovers, mutations, coeff_opts
     for variation_list in [crossovers, mutations, coeff_opts]:
@@ -164,7 +166,7 @@ class Evolution:
     for i in range(self.pop_size):
       self.population[i].fitness = fitnesses[i]
     # store eval cost
-    self.num_evals += self.pop_size
+    self.num_evals += sum([len(t.get_subtree()) for t in self.population])
     # store best at initialization
     best = self.population[np.argmax([t.fitness for t in self.population])]
     self.best_of_gens.append(deepcopy(best))
@@ -188,7 +190,7 @@ class Evolution:
     for i in range(self.pop_size):
       offspring_population[i].fitness = fitnesses[i]
     # store cost
-    self.num_evals += self.pop_size
+    self.num_evals += sum([len(t.get_subtree()) for t in self.population])
     # update the population for the next iteration
     self.population = offspring_population
     # update info
@@ -212,8 +214,18 @@ class Evolution:
     while not self._must_terminate():
       # perform one generation
       self._perform_generation()
+
+      self.save_data.append(
+                    {"n_gen":self.num_gens,
+                    "f":self.best_of_gens[-1].fitness,
+                    "f_fitness":sum([indiv.fitness for indiv in self.population]),
+                    "t":time.time() - self.start_time,
+                    "n_eval": self.num_evals, "tree":self.best_of_gens[-1]}
+                 )
       # log info
       if self.verbose:
         print("gen: {},\tbest of gen fitness: {:.3f},\tbest of gen size: {}".format(
             self.num_gens, self.best_of_gens[-1].fitness, len(self.best_of_gens[-1])
             ))
+
+    self.results = pd.DataFrame.from_dict(self.save_data)
