@@ -40,18 +40,17 @@ class RandomWalkTabu(Encoder):
         -------
         :bool: false if rejected"""
 
-        arCount = [2,2,0,0,2,0,0] # -> hardcoded for depth 2 atm, will be changed
+        arCount = [2,0,0]
+        for i in range(self.max_depth - 1):
+            arCount = [2]+2*arCount
         sequence = []
         for i, vector in enumerate(encoding):
             if arCount[i] == 0:
-                ids = list(np.unravel_index(
-                    vector[-len(self.leafNodes):].argmax(),
-                    vector[-len(self.leafNodes):].shape)
-                    )
-                ids[0] += self.internalNodes.shape[0] - len(self.leafNodes)
+                ids = vector[-len(self.leafNodes):].argmax()
+                ids += len(self.internalNodes) - len(self.leafNodes)
             else:
-                ids = np.unravel_index(vector.argmax(), vector.shape)
-            sequence.append((int(ids[0]), int(ids[1])))
+                ids = vector.argmax()
+            sequence.append(ids)
         sequence = tuple(s for s in sequence)
         if sequence in self.visited:
             self.temp_rep_count += 1
@@ -67,16 +66,18 @@ class RandomWalkTabu(Encoder):
         
         encoding = self.encode(tree, self.train_x)
         variation = encoding
-        shpx, shpy, shpz = encoding.shape
-        attempts = 0
+        tries = 0
         while not self._valid_change(variation):
-            rand_angle = np.random.randn(shpx, shpy, shpz)
+            tries += 1
+            rand_angle = np.random.randn(*encoding.shape)
             rand_angle = rand_angle / np.linalg.norm(rand_angle) * step_size
             variation = encoding + rand_angle
-            attempts += 1
-            if attempts > 50:
-                step_size  = int(1.25 * step_size)
-                attempts = 0
+            if tries > 5:
+                #print("Revisitng often...")
+                ...
+            if tries > 100:
+                break
+            break
         tree = self.decode(variation)
         
         return tree
