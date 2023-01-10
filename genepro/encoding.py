@@ -3,8 +3,118 @@ from copy import deepcopy
 from genepro.node import Node
 from genepro.node_impl import Composition, Identity, Xor
 
-class Encoder:
+class SlimEncoder:
+    """Decode node from sytax tree into a real-valued representation which aims to
+    inform variation about locality.
+    
+    Parameters
+    -----
+    unaryNodes :list: unary atomic functions available,
+    binaryNodes :list: binary atomic functions available,
+    leafNodes :list: leaf nodes available """
+
+    def __init__(self, unaryNodes : list, binaryNodes : list,
+            leafNodes : list, train_x : np.ndarray, train_y : np.ndarray) -> None:
+        # --- save original catogorization ---
+        self.leafNodes = leafNodes
+        self.binaryNodes, self.unaryNodes = binaryNodes, unaryNodes
+        self.train_x, self.train_y = train_x, train_y
+        # --- merge to composition node representation ---
+        unaryNodes = [Composition(unaryNodes[i], [Xor(0), Xor(1)][j])
+                        for i in range(len(unaryNodes)) for j in range(2)]
+        binaryNodes = [Composition(Identity(), bin) for bin in binaryNodes]
+        leafNodes = [Composition(Identity(), lf) for lf in leafNodes]
+        self.internalNodes = unaryNodes + binaryNodes + leafNodes
+    
+    def _softmax(self, x : np.ndarray) -> np.ndarray:
+        """Apply softmax numerically a bit more stabilized as
+        large values are subtracted before each exponential call.
+        
+        Parameters
+        -----
+        x :np.ndarray: data
+        
+        Returns
+        -----
+        softmaxed array of same shape :np.ndarray:"""
+
+        return np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum()
+        
+    def _compare(self, ax : np.ndarray, bx : np.ndarray,
+                                    epsilon : float = 1) -> float:
+        """Metric to determine similarity between atomic functions. The
+        epsilon value has a large impact on what makes an adequate step size
+        later in traversing the encoded space.
+        
+        Parameters
+        -----
+        ax :np.ndarray: node 1 to compare, bx :np.ndarray: node 2 to compare
+        
+        Returns
+        -----
+        similarity :float:"""
+        epsilon = epsilon/max(np.abs(self.train_y))
+        return np.exp(-np.mean(np.power(ax-bx, 2)) * epsilon)
+    
+    def encode_leaf(self, tree : Node, x : np.ndarray) -> np.ndarray:
+        encoding = np.zeros(len(self.leafNodes))
+        comparedNodesCache = []
+        x0, x1 = np.array([min(x[0]), max(x[0])]), np.array([min(x[1]), max(x[1])])
+        currentEval = tree.eval_indiv(x0, x1)
+        if currentEval.shape[0] > 2:
+            currentEval = np.array([min(currentEval), max(currentEval)])
+        self.num_evals += 2
+        for i in range(len(self.leafNodes)):
+            compareEval = self.leafNodes[i].eval_indiv(x0, x1)
+            if compareEval.shape[0] > 2:
+                compareEval = np.array([min(compareEval), max(compareEval)])
+            encoding[i] = self._compare(currentEval, compareEval)
+            self.num_evals += 2
+            comparedNodesCache.append(compareEval)
+
+        return encoding, comparedNodesCache
+    
+    def encode(self, tree : Node, x : np.ndarray) -> np.ndarray:      
+                                                                         
+        """Generate encoding of node.
+
+        Parameters
+        -----
+        tree :Node: root of tree to be encoded,
+        x :np.ndarray: x-data 
+        
+        Returns
+        -----
+        :np.ndarray: tree representation in encoded space"""
+
+        encoding = np.zeros(len(self.internalNodes))
+        comparedNodesCache = []
+        x0, x1 = np.array([min(x[0]), max(x[0])]), np.array([min(x[1]), max(x[1])])
+        currentEval = tree.eval_indiv(x0, x1)
+        if currentEval.shape[0] > 2:
+            currentEval = np.array([min(currentEval), max(currentEval)])
+        self.num_evals += 2
+        for i in range(len(self.internalNodes)):
+            compareEval = self.internalNodes[i].eval_indiv(x0, x1)
+            if compareEval.shape[0] > 2:
+                compareEval = np.array([min(compareEval), max(compareEval)])
+            self.num_evals += 2
+            encoding[i] = self._compare(currentEval, compareEval)
+            comparedNodesCache.append(compareEval)
+
+        return encoding, comparedNodesCache
+    
+    def decode(self, new_index : int):
+        return deepcopy(self.internalNodes[new_index])
+
+    def decode_leaf(self, new_index : int):
+        return deepcopy(self.leafNodes[new_index])
+
+class FullTreeEncoder:
     """Encode and decode in and from real-valued representation of syntax trees.
+
+    Ecoding entire trees turned out to be too computationally expensive and is not
+    further used.
     
     Parameters
     -----
@@ -17,7 +127,6 @@ class Encoder:
         # --- save original catogorization ---
         self.leafNodes = leafNodes
         self.binaryNodes, self.unaryNodes = binaryNodes, unaryNodes
-        self.max_depth = max_depth
         self.train_x, self.train_y = train_x, train_y
         # --- merge to composition node representation ---
         unaryNodes = unaryNodes + [Identity()]
@@ -46,8 +155,8 @@ class Encoder:
         if tree.binary.arity == 0:
             # --- for leaf nodes the domain has to be added twice since they are
             #     treated as binary nodes, the data only used in terms of its shape ---
-            tree.domains.append(self.x[:,0])
-            tree.domains.append(self.x[:,0])
+            tree.domains.append(self.train_x[:,0])
+            tree.domains.append(self.train_x[:,0])
         else:
             for child in tree._children:
                 child_image = child.eval_indiv(child.domains[0],
@@ -95,23 +204,17 @@ class Encoder:
         -----
         Return :np.ndarray: encoding of single node"""
 
-        nBin, nUn = self.internalNodes.shape
-        encoded = np.zeros((nBin, nUn))
+        n = len(self.internalNodes)
+        encoded = np.zeros(n)
         current = node.eval_indiv(node.domains[0], node.domains[1])
-        for i in range(nBin):
-            for j in range(nUn):
-                compareNode = self.internalNodes[i, j]
-                try:
-                    compare = compareNode.eval_indiv(node.domains[0],
-                                                     node.domains[1])
-                except RuntimeWarning:
-                     # --- Overflow allowed, clipped ---
-                    pass
-                encoded[i, j] = self._compare(
-                    np.clip(current, -1e32, 1e32),
-                    np.clip(compare, -1e32, 1e32),
-                    )
-        
+        for i in range(n):
+            compareNode = self.internalNodes[i]
+            compare = compareNode.eval_indiv(node.domains[0], node.domains[1])
+            encoded[i] = self._compare(
+                np.clip(current, -1e32, 1e32),
+                np.clip(compare, -1e32, 1e32),
+                )
+    
         return self._softmax(encoded)
     
     def encode(self, tree : Node, x : np.ndarray, has_domains : bool = False)\
@@ -126,7 +229,7 @@ class Encoder:
         Returns
         -----
         :np.ndarray: tree representation in encoded space"""
-        
+
         if not has_domains:
             self._assign_domains(tree)
         pref_vector = tree.get_subtree()
@@ -148,14 +251,11 @@ class Encoder:
         :Node: node object of embedded vector"""
 
         if forceLeaf:
-            ids = list(np.unravel_index(
-                vector[-len(self.leafNodes):].argmax(),
-                vector[-len(self.leafNodes):].shape)
-                )
-            ids[0] += self.internalNodes.shape[0] - len(self.leafNodes)
+            ids = vector[-len(self.leafNodes):].argmax()
+            ids += len(self.internalNodes) - len(self.leafNodes)
         else:
-            ids = np.unravel_index(vector.argmax(), vector.shape)
-        newNode = deepcopy(self.internalNodes[int(ids[0]), int(ids[1])])
+            ids = vector.argmax()
+        newNode = deepcopy(self.internalNodes[int(ids)])
         return newNode
     
     def _connect_tree_recursive(self, idx : int, sequence : list, arityCount : list):
@@ -191,101 +291,11 @@ class Encoder:
         :Node: decoded tree"""
 
         sequence = []
-        arCount = [2,2,0,0,2,0,0] # -> hardcoded for depth 2 atm, will be changed
+        arCount = [2,0,0]
+        for _ in range(self.max_depth - 1):
+            arCount = [2]+2*arCount
         for i, c in enumerate(code):
             sequence.append(self._backward_mapping(c, forceLeaf = arCount[i] == 0))
         
         self._connect_tree_recursive(0, sequence, arCount)
         return sequence[0]
-
-class SlimEncoder:
-    """Encode and decode in and from real-valued representation of syntax trees.
-    
-    Parameters
-    -----
-    unaryNodes :list: unary atomic functions available,
-    binaryNodes :list: binary atomic functions available,
-    leafNodes :list: leaf nodes available """
-
-    def __init__(self, unaryNodes : list, binaryNodes : list,
-            leafNodes : list, train_x : np.ndarray, train_y : np.ndarray) -> None:
-        # --- save original catogorization ---
-        self.leafNodes = leafNodes
-        self.binaryNodes, self.unaryNodes = binaryNodes, unaryNodes
-        self.train_x, self.train_y = train_x, train_y
-        # --- merge to composition node representation ---
-        unaryNodes = [Composition(unaryNodes[i], [Xor(0), Xor(1)][j])
-                        for i in range(len(unaryNodes)) for j in range(2)]
-        binaryNodes = [Composition(Identity(), bin) for bin in binaryNodes]
-        leafNodes = [Composition(Identity(), lf) for lf in leafNodes]
-        self.internalNodes = unaryNodes + binaryNodes + leafNodes
-    
-    
-    def _softmax(self, x : np.ndarray) -> np.ndarray:
-        """Apply softmax numerically a bit more stabilized as
-        large values are subtracted before each exponential call.
-        
-        Parameters
-        -----
-        x :np.ndarray: data
-        
-        Returns
-        -----
-        softmaxed array of same shape :np.ndarray:"""
-
-        return np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum()
-        
-    def _compare(self, ax : np.ndarray, bx : np.ndarray,
-                                    epsilon : float = 1) -> float:
-        """Metric to determine similarity between atomic functions. The
-        epsilon value has a large impact on what makes an adequate step size
-        later in traversing the encoded space.
-        
-        Parameters
-        -----
-        ax :np.ndarray: left child image, bx :np.ndarray: right child image
-        
-        Returns
-        -----
-        similarity :float:"""
-        epsilon = epsilon/max(np.abs(self.train_y))
-        return np.exp(-np.mean(np.power(ax-bx, 2)) * epsilon)
-    
-    def encode_leaf(self, tree : Node, x : np.ndarray) -> np.ndarray:
-        encoding = np.zeros(len(self.leafNodes))
-        comparedNodesCache = []
-        for i in range(len(self.leafNodes)):
-            compareEval = self.leafNodes[i].eval_indiv(x[0], x[1])
-            encoding[i] = self._compare(tree.eval, compareEval)
-            comparedNodesCache.append(compareEval)
-
-        return encoding, comparedNodesCache
-    
-    def encode(self, tree : Node, x : np.ndarray) -> np.ndarray:      
-                                                                         
-        """Generate encoding of node.
-
-        Parameters
-        -----
-        tree :Node: root of tree to be encoded,
-        x :np.ndarray: x-data 
-        
-        Returns
-        -----
-        :np.ndarray: tree representation in encoded space"""
-
-        encoding = np.zeros(len(self.internalNodes))
-        comparedNodesCache = []
-        for i in range(len(self.internalNodes)):
-            compareEval = self.internalNodes[i].eval_indiv(x[0], x[1])
-            encoding[i] = self._compare(tree.eval, compareEval)
-            comparedNodesCache.append(compareEval)
-
-        return encoding, comparedNodesCache
-    
-    
-    def decode(self, new_index : int):
-        return deepcopy(self.internalNodes[new_index])
-
-    def decode_leaf(self, new_index : int):
-        return deepcopy(self.leafNodes[new_index])

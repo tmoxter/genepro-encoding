@@ -8,7 +8,6 @@ from copy import deepcopy
 from genepro.node import Node
 from genepro.node_impl import Constant
 
-
 def generate_random_tree(internal_nodes : list, leaf_nodes : list, max_depth : int, curr_depth : int=0):
   """
   Recursive method to generate a random tree containing the given types of nodes and up to the given maximum depth
@@ -144,7 +143,6 @@ def node_level_crossover(tree : Node, donor : Node, same_depth : bool=False, pro
   
   return tree
 
-
 def subtree_mutation(tree : Node, internal_nodes : list, leaf_nodes : list, 
   unif_depth : bool=True, max_depth : int=4, prob_leaf : float=0.25) -> Node:
   """
@@ -251,9 +249,6 @@ def __sample_uniform_depth_nodes(nodes : list) -> list:
   d = randc(possible_depths)
   candidates = [n for i, n in enumerate(nodes) if depths[i] == d]
   return candidates
-  
-
-
 
 def generate_offspring(parent : Node, 
   crossovers : list, mutations : list, coeff_opts : list,
@@ -312,7 +307,6 @@ def generate_offspring(parent : Node,
 
   return offspring
 
-
 def __undergo_variation_operator(var_op : dict, offspring : Node,
   crossovers, mutations, coeff_opts,
   donor, internal_nodes, leaf_nodes) -> Node:
@@ -335,7 +329,6 @@ def __undergo_variation_operator(var_op : dict, offspring : Node,
 
   return offspring
 
-
 def __check_tree_meets_all_constraints(tree : Node, constraints : dict=dict()) -> bool:
   """
   """
@@ -348,3 +341,141 @@ def __check_tree_meets_all_constraints(tree : Node, constraints : dict=dict()) -
     else:
       raise ValueError("Unrecognized constraint name: {}".format(constraint_name))
   return meets
+
+############################################
+# New variation methods regarding locality #
+############################################
+
+def local_variation(evolution : object, tree : Node):
+    """Change a number of randomly chosen nodes using the locality encoding to (likely) make
+    local moves. Re-evaluate the remaining nodes that are impacted (the parents).
+    
+    Parameters
+    --------
+    evolution :main evolution object:,
+    tree :Node: tree to be varied
+    
+    Returns
+    --------
+    :Node: Returns new tree after variation and re-evaluation"""    
+
+    tree = deepcopy(tree)
+    
+    cIdxs = np.random.choice(range(1, len(tree)),
+                size = evolution.variation_config["paras"]["n_nodes"],
+                replace=False)
+
+    # --- change the states of the selected notes ---
+    for cidx in cIdxs:
+        if cidx >= 2**(evolution.max_depth):
+            x = (tree[cidx].eval, tree[cidx].eval)
+            encoded, cache = evolution.encode_leaf(tree[cidx], x)
+            encoded[np.argmax(encoded)] *=.0
+            stateChange = np.random.choice(range(len(evolution.leafNodes)),
+                            p=evolution._softmax(encoded))
+            tree[cidx] = evolution.decode_leaf(stateChange)
+            #tree[cidx].eval = cache[stateChange]
+            tree[cidx].eval = tree[cidx].eval_indiv(x[0], x[1])
+            evolution.num_evals += len(x[0])
+        else:
+            x = (tree[2*cidx].eval, tree[2*cidx+1].eval)
+            encoded, cache = evolution.encode(tree[cidx], x)
+            nearest = np.argsort(encoded)\
+                    [1:evolution.variation_config["paras"]["n_neighbors"]+1]
+            stateChange = np.random.choice(nearest,
+                                        p=evolution._softmax(encoded[nearest]))
+            tree[cidx] = evolution.decode(stateChange)
+            #tree[cidx].eval = cache[stateChange]
+            tree[cidx].eval = tree[cidx].eval_indiv(x[0], x[1])
+            evolution.num_evals += len(x[0])
+        
+        parentId = (cidx)//2
+        while parentId > 0:
+                tree[parentId].eval = tree[parentId].eval_indiv(tree[(parentId)*2].eval,
+                                                                tree[(parentId)*2+1].eval)
+                evolution.num_evals += len(tree[(parentId)*2].eval)
+                if parentId == 1:
+                    break
+                parentId = (parentId)//2
+    
+    tree[0] = evolution._fitness(tree[1].eval)
+    return tree
+
+def random_variation(evolution : object, tree : Node):
+    """Change a number of uniformly chosen nodes to make arbitrary moves.
+    Re-evaluate the remaining nodes that are impacted (the parents).
+    
+    Parameters
+    --------
+    evolution :main evolution object:,
+    tree :Node: tree to be varied
+    
+    Returns
+    --------
+    :Node: Returns new tree after variation and re-evaluation"""  
+        
+    tree = deepcopy(tree)
+    
+    cIdxs = np.random.choice(range(1, len(tree)),
+                            size = evolution.var_size_nodes, replace=False)
+    # --- change the states of the selected notes ---
+    for cidx in cIdxs:
+        if cidx >= 2**(evolution.max_depth):
+            x = (tree[cidx].eval, tree[cidx].eval)
+            tree[cidx] = np.random.choice(evolution.leafNodes)
+        else:
+            x = (tree[2*cidx].eval, tree[2*cidx+1].eval)
+            tree[cidx] = np.random.choice(evolution.internalNodes)
+        tree[cidx].eval = tree[cidx].eval_indiv(x[0], x[1])
+        evolution.num_evals += len(x[0])
+        
+        parentId = (cidx)//2
+        while parentId > 0:
+                tree[parentId].eval = tree[parentId].eval_indiv(tree[(parentId)*2].eval,
+                                                                tree[(parentId)*2+1].eval)
+                evolution.num_evals += len(tree[(parentId)*2].eval)
+                if parentId == 1:
+                    break
+                parentId = (parentId)//2
+    
+    tree[0] = evolution._fitness(tree[1].eval)
+    return tree
+
+def node_variations(evolution : object, tree : Node, n_steps : int = ...,
+                  large_move_rate : float = ..., selective : bool = ...) -> Node:
+    """Wrapper to manage different methods of variation, e.g. a random walk for n_steps > 1 or
+    a specific ratio of large and local moves.
+    
+    Parameters
+    --------
+    evolution :main evolution object:,
+    tree :Node: tree to be varied
+    n_steps :int: number of variation steps to be taken
+    large_move_rate :float: in case a mixture of random moves and local moves is desired
+    their ratio can be set
+    selective :bool: whether to reject bad moves
+    
+    Returns
+    --------
+    :Node: Returns new tree after variation and re-evaluation"""  
+    
+    if large_move_rate == Ellipsis:
+      large_move_rate = evolution.variation_config["paras"]["large_move_rate"]
+    if n_steps == Ellipsis:
+      n_steps = evolution.variation_config["paras"]["n_steps"]
+    if selective == Ellipsis:
+      selective = evolution.variation_config["paras"]["selective"]
+
+    large_moves = np.random.rand() < large_move_rate
+    best_of_var = deepcopy(tree)
+    for _ in range(evolution.variation_config["paras"]["n_steps"]):
+        if large_moves:
+            var = random_variation(evolution, best_of_var)
+        else:
+            var = local_variation(evolution, best_of_var)
+        if var[0] > best_of_var[0]:
+            best_of_var = var
+        elif not evolution.variation_config["paras"]["selective"]:
+            best_of_var = var
+
+    return best_of_var
