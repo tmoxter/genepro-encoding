@@ -419,7 +419,8 @@ def random_variation(evolution : object, tree : Node):
     tree = deepcopy(tree)
     
     cIdxs = np.random.choice(range(1, len(tree)),
-                            size = evolution.var_size_nodes, replace=False)
+                            size = evolution.variation_config["paras"]["n_nodes"],
+                            replace=False)
     # --- change the states of the selected notes unifromly ---
     for cidx in cIdxs:
         if cidx >= 2**(evolution.max_depth):
