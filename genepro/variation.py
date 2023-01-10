@@ -365,12 +365,13 @@ def local_variation(evolution : object, tree : Node):
                 size = evolution.variation_config["paras"]["n_nodes"],
                 replace=False)
 
-    # --- change the states of the selected notes ---
+    # --- change the states of the selected nodes ---
     for cidx in cIdxs:
         if cidx >= 2**(evolution.max_depth):
+        # --- --- for leaf, only consider other leafs --- ---
             x = (tree[cidx].eval, tree[cidx].eval)
             encoded, cache = evolution.encode_leaf(tree[cidx], x)
-            encoded[np.argmax(encoded)] *=.0
+            encoded[np.argmax(encoded)] *=0 #--> enforce change setting current state likelyhood to zero
             stateChange = np.random.choice(range(len(evolution.leafNodes)),
                             p=evolution._softmax(encoded))
             tree[cidx] = evolution.decode_leaf(stateChange)
@@ -378,17 +379,18 @@ def local_variation(evolution : object, tree : Node):
             tree[cidx].eval = tree[cidx].eval_indiv(x[0], x[1])
             evolution.num_evals += len(x[0])
         else:
+        # --- --- for internal nodes, consider all alternatives --- ---
             x = (tree[2*cidx].eval, tree[2*cidx+1].eval)
             encoded, cache = evolution.encode(tree[cidx], x)
             nearest = np.argsort(encoded)\
                     [1:evolution.variation_config["paras"]["n_neighbors"]+1]
             stateChange = np.random.choice(nearest,
-                                        p=evolution._softmax(encoded[nearest]))
+                                      p=evolution._softmax(encoded[nearest]))
             tree[cidx] = evolution.decode(stateChange)
             #tree[cidx].eval = cache[stateChange]
             tree[cidx].eval = tree[cidx].eval_indiv(x[0], x[1])
             evolution.num_evals += len(x[0])
-        
+        # --- --- update parents consecutively --- ---
         parentId = (cidx)//2
         while parentId > 0:
                 tree[parentId].eval = tree[parentId].eval_indiv(tree[(parentId)*2].eval,
@@ -418,17 +420,19 @@ def random_variation(evolution : object, tree : Node):
     
     cIdxs = np.random.choice(range(1, len(tree)),
                             size = evolution.var_size_nodes, replace=False)
-    # --- change the states of the selected notes ---
+    # --- change the states of the selected notes unifromly ---
     for cidx in cIdxs:
         if cidx >= 2**(evolution.max_depth):
+        # --- --- for leaf, only consider other leafs --- ---
             x = (tree[cidx].eval, tree[cidx].eval)
             tree[cidx] = np.random.choice(evolution.leafNodes)
         else:
+        # --- --- for internal nodes, consider all alternatives --- ---
             x = (tree[2*cidx].eval, tree[2*cidx+1].eval)
             tree[cidx] = np.random.choice(evolution.internalNodes)
         tree[cidx].eval = tree[cidx].eval_indiv(x[0], x[1])
         evolution.num_evals += len(x[0])
-        
+        # --- --- update parents consecutively --- ---
         parentId = (cidx)//2
         while parentId > 0:
                 tree[parentId].eval = tree[parentId].eval_indiv(tree[(parentId)*2].eval,
@@ -458,24 +462,17 @@ def node_variations(evolution : object, tree : Node, n_steps : int = ...,
     Returns
     --------
     :Node: Returns new tree after variation and re-evaluation"""  
-    
-    if large_move_rate == Ellipsis:
-      large_move_rate = evolution.variation_config["paras"]["large_move_rate"]
-    if n_steps == Ellipsis:
-      n_steps = evolution.variation_config["paras"]["n_steps"]
-    if selective == Ellipsis:
-      selective = evolution.variation_config["paras"]["selective"]
 
     large_moves = np.random.rand() < large_move_rate
     best_of_var = deepcopy(tree)
-    for _ in range(evolution.variation_config["paras"]["n_steps"]):
+    for _ in range(n_steps):
         if large_moves:
             var = random_variation(evolution, best_of_var)
         else:
             var = local_variation(evolution, best_of_var)
         if var[0] > best_of_var[0]:
             best_of_var = var
-        elif not evolution.variation_config["paras"]["selective"]:
+        elif not selective:
             best_of_var = var
 
     return best_of_var

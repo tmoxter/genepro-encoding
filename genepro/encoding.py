@@ -57,6 +57,17 @@ class SlimEncoder:
         return np.exp(-np.mean(np.power(ax-bx, 2)) * epsilon)
     
     def encode_leaf(self, tree : Node, x : np.ndarray) -> np.ndarray:
+        """Generate encoding of leaf node.
+
+        Parameters
+        -----
+        tree :Node: root of node to be encoded,
+        x :np.ndarray: x-data 
+        
+        Returns
+        -----
+        :np.ndarray: node representation in encoded space"""
+
         encoding = np.zeros(len(self.leafNodes))
         comparedNodesCache = []
         x0, x1 = np.array([min(x[0]), max(x[0])]), np.array([min(x[1]), max(x[1])])
@@ -74,18 +85,17 @@ class SlimEncoder:
 
         return encoding, comparedNodesCache
     
-    def encode(self, tree : Node, x : np.ndarray) -> np.ndarray:      
-                                                                         
-        """Generate encoding of node.
+    def encode(self, tree : Node, x : np.ndarray) -> np.ndarray:                                                                     
+        """Generate encoding of internal node.
 
         Parameters
         -----
-        tree :Node: root of tree to be encoded,
+        tree :Node: node to be encoded,
         x :np.ndarray: x-data 
         
         Returns
         -----
-        :np.ndarray: tree representation in encoded space"""
+        :np.ndarray: node representation in encoded space"""
 
         encoding = np.zeros(len(self.internalNodes))
         comparedNodesCache = []
@@ -104,10 +114,30 @@ class SlimEncoder:
 
         return encoding, comparedNodesCache
     
-    def decode(self, new_index : int):
+    def decode(self, new_index : int) -> Node:
+        """Wrapper to decode internal node.
+
+        Parameters
+        ----------
+        new_index :int: index
+
+        Returns
+        --------
+        node :Node:
+        """
         return deepcopy(self.internalNodes[new_index])
 
     def decode_leaf(self, new_index : int):
+        """Wrapper to decode leaf node.
+
+        Parameters
+        ----------
+        new_index :int: index
+
+        Returns
+        --------
+        node :Node:
+        """
         return deepcopy(self.leafNodes[new_index])
 
 class FullTreeEncoder:

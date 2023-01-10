@@ -65,7 +65,14 @@ class EvolutionLocalSearchSlim(SlimEncoder):
         self.save_data = []
         
     def evolve(self) -> None:
-
+        """Initialize new generation and evolve until termination criteria are met.
+        
+        Parameters
+        ------
+        
+        Returns
+        ------
+        None"""
         self.start_time = time.time()
         self.num_gens = 0
         self.num_evals = 0
@@ -77,7 +84,6 @@ class EvolutionLocalSearchSlim(SlimEncoder):
             # --- --- perform one generation --- ---
             self._perform_generation()
             # --- --- logging & printing --- ---
-    
             self.save_data.append(
                 {"n_gen":self.num_gens,
                 "f":self.best_of_gens[-1][0],
@@ -85,7 +91,6 @@ class EvolutionLocalSearchSlim(SlimEncoder):
                 "t":time.time() - self.start_time,
                 "n_eval": self.num_evals, "tree":self.best_of_gens[-1]}
             )
-
             if self.log:
                 self.log.add_scalar("Best v. nGen", 
                     self.best_of_gens[-1][0], self.num_gens)
@@ -96,7 +101,7 @@ class EvolutionLocalSearchSlim(SlimEncoder):
                     .format(self.num_gens, self.best_of_gens[-1][0],
                     np.sum([indiv[0] for indiv in self.population]))
                 )
-        
+    
         self.results = pd.DataFrame.from_dict(self.save_data)
     
     def _initialize_population(self):
@@ -116,34 +121,42 @@ class EvolutionLocalSearchSlim(SlimEncoder):
     def _perform_generation(self) -> None:
         """Evolve one generation."""
 
+        # --- general form of local variation ---
         if self.variation_config["method"] == "nodewise_variation":
             offspring = Parallel(self.n_jobs, backend='threading')(
                 delayed(node_variations)
-                (self, self.population[i])
-                for i in range(self.pop_size)
+                (self,
+                self.population[i],
+                self.variation_config["paras"]["n_steps"],
+                self.variation_config["paras"]["large_move_rate"],
+                self.variation_config["paras"]["selective"])
+                for i in range(self.pop_size
+                )
             )
 
+        # --- combination of multiple local and and large random moves ---
         elif self.variation_config["method"] == "consequtive_variation":
-            # --- perform several small selective (exploitative) steps ---
+            # --- --- perform several small selective (exploitative) steps --- ---
             self.population = Parallel(self.n_jobs, backend='threading')(
                 delayed(node_variations)
                 (self,
-                # Make node_wise variation expect these but default to None ...
-                    self.population[i],
-                    self.variation_config["paras"]["n_steps"],
-                    0, True
+                self.population[i],
+                self.variation_config["paras"]["n_steps"],
+                0, True
                 )
                 for i in range(self.pop_size)
             )
-            # --- perform one large (explotative) step ---
+            # --- --- perform one large (explotative) step --- ---
             offspring = Parallel(self.n_jobs, backend='threading')(
                 delayed(node_variations)
                 (self,
-                    self.population[i], 1, 1, False
+                self.population[i],
+                1, 1, False
                 )
                 for i in range(self.pop_size)
             )
-        
+
+        # --- selection ---
         if self.selection_config["method"] == "tournament_selection":
             self.population = tournament_selection(
                 self.population + offspring,
