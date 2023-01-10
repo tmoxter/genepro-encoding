@@ -3,6 +3,42 @@ from genepro.node import Node
 from genepro.node_impl import Composition, Identity, Xor
 from numpy.random import choice as randc
 from copy import deepcopy
+
+def sample_tree_vectorized(unaryNodes : list, binaryNodes : list, leafNodes : list,
+                        depth: int, xtrain : np.ndarray):
+    """Generate random new full trew in vectorized format. Nodes are already compositin objects,
+    And are already evaluated on the training data.
+
+    Parameters
+    -----
+    unaryNodes :list: unary atomic functions available,
+    binaryNodes :list: binary atomic functions available,
+    leafNodes :list: leaf nodes available,
+    depth :int: depth the binary tree,
+    xtrain :np.ndarray: training data
+    
+    Returns
+    -----
+    Returns :list: newly sampled tree"""
+
+    unaryNodes = [Composition(unaryNodes[i], [Xor(0), Xor(1)][j])
+                        for i in range(len(unaryNodes)) for j in range(2)]
+    binaryNodes = [Composition(Identity(), bin) for bin in binaryNodes]
+    leafNodes = [Composition(Identity(), lf) for lf in leafNodes]
+    depth = depth+1
+    tree = [None]*(2**depth)
+    # --- fill leaf nodes ---
+    for i in range(2**(depth-1), 2**depth):
+        choice = deepcopy(randc(leafNodes))
+        choice.eval = choice.eval_indiv(xtrain, None)
+        tree[i] = choice
+    # --- fill rest of the tree recursively ---
+    for i in range(2**(depth-1)-1, 0, -1):
+        choice = deepcopy(randc(binaryNodes*2 + unaryNodes))
+        choice.eval = choice.eval_indiv(tree[2*i].eval, tree[2*i+1].eval)
+        tree[i] = choice
+    tree[0] = -1e2
+    return tree
     
 def sample_tree(unary_nodes : list, binary_nodes : list, leaf_nodes : list,
                         max_depth : int = 3, curr_depth : int = 0) -> Node:
@@ -67,35 +103,7 @@ def sample_tree_slim(unaryNodes : list, binaryNodes : list, leafNodes : list,
 
     if curr_depth != max_depth:
         for _ in range(n.arity):
-            c = sample_tree(unaryNodes, binaryNodes, leafNodes, 
+            c = sample_tree_slim(unaryNodes, binaryNodes, leafNodes, 
                                             max_depth, curr_depth+1)
             node.insert_child(c)
     return node
-
-
-def sample_tree_vectorized(unaryNodes : list, binaryNodes : list, leafNodes : list,
-                        depth: int, xtrain : np.ndarray):
-
-    unaryNodes = [Composition(unaryNodes[i], [Xor(0), Xor(1)][j])
-                        for i in range(len(unaryNodes)) for j in range(2)]
-    binaryNodes = [Composition(Identity(), bin) for bin in binaryNodes]
-    leafNodes = [Composition(Identity(), lf) for lf in leafNodes]
-    depth = depth+1
-    tree = [None]*(2**depth)
-    # --- fill leaf nodes ---
-    for i in range(2**(depth-1), 2**depth):
-        choice = deepcopy(randc(leafNodes))
-        choice.eval = choice.eval_indiv(xtrain, None)
-        tree[i] = choice
-    # --- fill rest of the tree recursively ---
-    for layer in range(depth-1, 0, -1):
-        for i in range(2**(layer-1), 2**layer):
-            choice = deepcopy(randc(binaryNodes*2 + unaryNodes))
-            choice.eval = choice.eval_indiv(tree[2*i].eval, tree[2*i+1].eval)
-            tree[i] = choice
-    # --- fill in root node ---
-    choice = deepcopy(randc(binaryNodes*2 + unaryNodes))
-    choice.eval = choice.eval_indiv(tree[2].eval, tree[3].eval)
-    tree[1] = choice
-    tree[0] = -1e2
-    return tree
